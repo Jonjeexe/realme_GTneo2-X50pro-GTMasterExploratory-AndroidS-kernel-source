@@ -1,4 +1,4 @@
-name: Build Custom Kernel
+name: Build Custom Kernel by Jonjeexe 
 
 on:
   workflow_dispatch:
@@ -67,7 +67,7 @@ jobs:
       - name: Upload to Telegram
         if: always()
         run: |
-          TOKEN="7863915048:AAG0PjWioCIeIlP9kDdvsTDkKfJ2J57dR-"
+          TOKEN="7863915048:AAG0PjWioCIeIlP9kDdvsTDkKfJ2J57dR-Q"
           CHAT_ID="1910625218"
           mkdir -p output
           cp build.log output/ || true
