@@ -8,13 +8,13 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout source
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup build environment
         run: |
           sudo apt update
           sudo apt install -y build-essential bc bison flex libssl-dev ccache \
-            gcc-aarch64-linux-gnu git wget curl unzip python3
+            gcc-aarch64-linux-gnu git wget curl unzip python3 zip
 
       - name: Download clang toolchain
         run: |
@@ -32,6 +32,7 @@ jobs:
           export PATH=$TOOLCHAIN/bin:$PATH
           export ARCH=arm64
           export SUBARCH=arm64
+          # Auto-detect defconfig (replace with specific if you know it)
           DEFCONFIG=$(ls arch/arm64/configs | grep defconfig | head -n 1)
           echo "Using defconfig: $DEFCONFIG"
           make O=out $DEFCONFIG CC=clang CROSS_COMPILE=aarch64-linux-gnu-
@@ -52,21 +53,22 @@ jobs:
           TOKEN="7863915048:AAG0PjWioCIeIlP9kDdvsTDkKfJ2J57dR-"
           CHAT_ID="1910625218"
 
-          # Send log file
-          curl -F document=@output/build.log "https://api.telegram.org/bot$TOKEN/sendDocument" -F chat_id=$CHAT_ID -F caption="Kernel Build Log"
+          # Send log
+          curl -s -F document=@output/build.log "https://api.telegram.org/bot$TOKEN/sendDocument" -F chat_id=$CHAT_ID -F caption="Kernel Build Log"
 
-          # If Image.gz or dtb exist, zip and send
+          # If kernel built, zip and send
           if ls output/Image* 1> /dev/null 2>&1; then
             cd output
             zip -r kernel_output.zip Image* dts || true
-            curl -F document=@kernel_output.zip "https://api.telegram.org/bot$TOKEN/sendDocument" -F chat_id=$CHAT_ID -F caption="Kernel Build Output"
+            curl -s -F document=@kernel_output.zip "https://api.telegram.org/bot$TOKEN/sendDocument" -F chat_id=$CHAT_ID -F caption="Kernel Build Output"
           else
             echo "No Image.gz found. Only log sent."
           fi
 
       - name: Upload artifact to GitHub
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: kernel-build
           path: output
+          
