@@ -1,0 +1,90 @@
+name: Build Custom Kernel
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Initialize log
+        run: |
+          mkdir -p output
+          echo "Kernel build started at $(date)" > build.log
+
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Setup build environment
+        run: |
+          {
+            sudo apt update
+            sudo apt install -y build-essential bc bison flex libssl-dev ccache \
+              gcc-aarch64-linux-gnu git wget curl unzip python3 zip
+          } 2>&1 | tee -a build.log
+
+      - name: Download Clang toolchain
+        run: |
+          {
+            mkdir -p toolchains
+            cd toolchains
+            wget -O clang.tar.gz https://github.com/tiann/clang-r498229b-prebuilt/releases/download/498229b/clang-r498229b.tar.gz
+            mkdir clang
+            tar -xf clang.tar.gz -C clang
+            echo "TOOLCHAIN=$PWD/clang" >> $GITHUB_ENV
+          } 2>&1 | tee -a ../../build.log
+
+      - name: Add tweaks and version tag
+        run: |
+          {
+            echo "CONFIG_ZRAM=y" >> arch/arm64/configs/defconfig || true
+            echo "CONFIG_ZSWAP=y" >> arch/arm64/configs/defconfig || true
+            echo "CONFIG_ZSMALLOC=y" >> arch/arm64/configs/defconfig || true
+            sed -i '/EXTRAVERSION/c\EXTRAVERSION = -Jonjeexe' Makefile || true
+          } 2>&1 | tee -a build.log
+
+      - name: Build Kernel
+        run: |
+          {
+            export PATH=$TOOLCHAIN/bin:$PATH
+            export ARCH=arm64
+            export SUBARCH=arm64
+            DEFCONFIG="defconfig"
+            echo "Using defconfig: $DEFCONFIG"
+            make O=out $DEFCONFIG CC=clang CROSS_COMPILE=aarch64-linux-gnu-
+            make -j$(nproc) O=out CC=clang CROSS_COMPILE=aarch64-linux-gnu-
+            echo "Build completed"
+          } 2>&1 | tee -a build.log
+
+      - name: Prepare artifacts
+        if: always()
+        run: |
+          mkdir -p output
+          cp -r out/arch/arm64/boot/Image* output/ 2>/dev/null || true
+          cp -r out/arch/arm64/boot/dts output/ 2>/dev/null || true
+          cp build.log output/ || true
+
+      - name: Upload to Telegram
+        if: always()
+        run: |
+          TOKEN="7863915048:AAG0PjWioCIeIlP9kDdvsTDkKfJ2J57dR-"
+          CHAT_ID="1910625218"
+          mkdir -p output
+          cp build.log output/ || true
+          curl -s -F document=@output/build.log \
+            "https://api.telegram.org/bot$TOKEN/sendDocument" \
+            -F chat_id=$CHAT_ID -F caption="Kernel Build Log"
+          if ls output/Image* 1> /dev/null 2>&1; then
+            cd output
+            zip -r kernel_output.zip Image* dts || true
+            curl -s -F document=@kernel_output.zip \
+              "https://api.telegram.org/bot$TOKEN/sendDocument" \
+              -F chat_id=$CHAT_ID -F caption="Kernel Build Output"
+          fi
+
+      - name: Upload artifact to GitHub
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kernel-build
+          path: output
